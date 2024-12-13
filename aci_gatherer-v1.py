@@ -70,27 +70,53 @@ def main():
                     bd_dn = bd_data[0]['fvRsBd']['attributes']['tDn']
                     bd_name = bd_dn.split('/')[-1][3:]  # Extract BD name from DN
                     
-                    # Get Subnets for this BD
-                    subnets = get_data(apic, token, f"/api/node/class/fvSubnet.json?query-target-filter=wcard(fvSubnet.dn,\"{bd_dn}\")")
+                    # Get VRF for this BD
+                    vrf_data = get_data(apic, token, f"/api/node/mo/{bd_dn}/rsctx.json?query-target=self")
+                    vrf_name = ''
+                    if vrf_data:
+                        vrf_dn = vrf_data[0]['fvRsCtx']['attributes']['tDn']
+                        vrf_name = vrf_dn.split('/')[-1][3:]  # Extract VRF name from DN
                     
-                    if subnets:
-                        # If BD has subnets, add one row per subnet
-                        for subnet in subnets:
+                    # Get Subnets from EPG level
+                    epg_subnets = get_data(apic, token, f"/api/node/class/fvSubnet.json?query-target-filter=wcard(fvSubnet.dn,\"{epg_dn}\")")
+                    
+                    # Get Subnets from BD level
+                    bd_subnets = get_data(apic, token, f"/api/node/class/fvSubnet.json?query-target-filter=wcard(fvSubnet.dn,\"{bd_dn}\")")
+                    
+                    # If there are subnets at either level, add them
+                    if epg_subnets or bd_subnets:
+                        # Add EPG level subnets
+                        for subnet in epg_subnets:
                             combined_data.append({
                                 'Tenant': tenant,
                                 'Application Profile': ap_name,
                                 'EPG': epg_name,
                                 'Bridge Domain': bd_name,
-                                'Subnet': subnet['fvSubnet']['attributes']['ip']
+                                'VRF': vrf_name,
+                                'Subnet': subnet['fvSubnet']['attributes']['ip'],
+                                'Subnet Level': 'EPG'
+                            })
+                        # Add BD level subnets
+                        for subnet in bd_subnets:
+                            combined_data.append({
+                                'Tenant': tenant,
+                                'Application Profile': ap_name,
+                                'EPG': epg_name,
+                                'Bridge Domain': bd_name,
+                                'VRF': vrf_name,
+                                'Subnet': subnet['fvSubnet']['attributes']['ip'],
+                                'Subnet Level': 'BD'
                             })
                     else:
-                        # If BD has no subnets, add row without subnet
+                        # If no subnets at either level, add row without subnet
                         combined_data.append({
                             'Tenant': tenant,
                             'Application Profile': ap_name,
                             'EPG': epg_name,
                             'Bridge Domain': bd_name,
-                            'Subnet': ''
+                            'VRF': vrf_name,
+                            'Subnet': '',
+                            'Subnet Level': ''
                         })
                 else:
                     # If EPG has no BD mapping, add row without BD and subnet
@@ -99,7 +125,9 @@ def main():
                         'Application Profile': ap_name,
                         'EPG': epg_name,
                         'Bridge Domain': '',
-                        'Subnet': ''
+                        'VRF': '',
+                        'Subnet': '',
+                        'Subnet Level': ''
                     })
 
         # Create Excel writer
